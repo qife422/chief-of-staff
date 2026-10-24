@@ -1,0 +1,91 @@
+  if (b.replies.length) b.replies.forEach(r => lines.push(`- **${r.who}:** ${r.text}`));
+  else lines.push('- (nothing needs an answer)');
+  if (b.decision) {
+    lines.push('', '## Decided for you', `**${b.decision.choice}**${b.decision.why ? ' \u2014 ' + b.decision.why : ''}`);
+  } else if (b.raw.decision) {
+    lines.push('', '## Decided for you (model went off-format — raw take)', b.raw.decision);
+  }
+  return lines.join('\n');
+}
+
+// ---------- The night shift ----------
+async function runNightShift() {
+  const inputs = {
+    schedule: $('in-schedule').value.trim(),
+    messages: $('in-messages').value.trim(),
+    mind: $('in-mind').value.trim(),
+    decision: $('in-decision').value.trim()
+  };
+  if (!inputs.schedule && !inputs.messages && !inputs.mind) {
+    setStatus('Your chief of staff needs something to work with \u2014 fill in at least one box, or try the Demo night.');
+    return;
+  }
+  goBtn.disabled = true;
+  $('demo').disabled = true;
+  current = { inputs, priorities: [], replies: [], decision: null, raw: {}, ts: Date.now() };
+  try {
+    renderLog(0, 0);
+    setStatus('First, the shape of tomorrow\u2026');
+    if (inputs.schedule || inputs.mind) {
+      const rawP = await generate(SYS_PRIORITIES,
+        `Input: Schedule: ${inputs.schedule || 'nothing scheduled'}. Brain dump: ${inputs.mind || 'nothing'}.\nOutput:`, 220, EX_PRIORITIES, true);
+      current.raw.priorities = rawP;
+      current.priorities = parsePriorities(rawP);
+    }
+    renderLog(2, 2);
+    setStatus('Triaging the message pile\u2026');
+    if (inputs.messages) {
+      const rawR = await generate(SYS_REPLIES, `Input: Messages: ${inputs.messages}\nOutput:`);
+      current.raw.replies = rawR;
+      current.replies = parseReplies(rawR);
+    }
+    renderLog(4, 4);
+    if (inputs.decision) {
+      setStatus('Making the call you were putting off\u2026');
+      const rawD = await generate(SYS_DECISION,
+        `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+      current.raw.decision = rawD;
+      current.decision = parseDecision(rawD);
+    }
+    renderLog(6, -1);
+    current.ts = Date.now();
+    localStorage.setItem(LS_KEY, JSON.stringify(current));
+    renderBrief();
+    setStatus('Brief ready. Total bytes of your private life that left this device: 0.');
+  } catch (err) {
+    console.error(err);
+    if (String(err && err.message) === 'garbage-tokens') {
+      setStatus('The model produced garbage tokens \u2014 reload the page and let it take the fp32 path again.');
+    } else {
+      setStatus('Something went wrong on the night shift \u2014 check the console and try again.');
+    }
+  } finally {
+    goBtn.disabled = false;
+    $('demo').disabled = false;
+  }
+}
+
+// ---------- Wiring ----------
+goBtn.addEventListener('click', runNightShift);
+$('again').addEventListener('click', runNightShift);
+$('demo').addEventListener('click', () => {
+  $('in-schedule').value = DEMO.schedule;
+  $('in-messages').value = DEMO.messages;
+  $('in-mind').value = DEMO.mind;
+  $('in-decision').value = DEMO.decision;
+  setStatus('Demo night loaded \u2014 a fictional but very plausible tomorrow. Hit \u201CStart the night shift\u201D.');
+});
+$('copy-brief').addEventListener('click', async (e) => {
+  try { await navigator.clipboard.writeText(briefToMarkdown()); e.target.textContent = '\u2713 Copied'; }
+  catch { e.target.textContent = 'Copy failed'; }
+  setTimeout(() => { e.target.textContent = '\uD83D\uDCCB Copy the whole brief'; }, 1500);
+});
+
+// Restore last night's brief, if there is one
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+  if (saved && (saved.priorities.length || saved.replies.length || saved.decision)) {
+    current = saved;
+    const banner = $('saved-banner');
+    banner.hidden = false;
+    banner.textContent = '\uD83C\uDF19 Welcome back \u2014 your chief of staff kept last night\u2019s brief for you (' +
