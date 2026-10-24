@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chief of Staff — you sleep, it works the night shift</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌙</text></svg>" />
+<style>
+  :root {
+    --night:#0b0e22; --panel:#141836; --panel-line:#2c3263;
+    --amber:#f2b33d; --amber-dark:#8a5a00;
+    --paper:#fffaf0; --ink:#25222e; --muted:#a7aede; --muted2:#5d5a70;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: linear-gradient(180deg, #07081a, var(--night) 30%, #10142e); color:#eceefb; }
+  main { max-width: 740px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 2rem; margin: 8px 0 4px; }
+  h1 .moon { color: var(--amber); }
+  .sub { color: var(--muted); margin-top: 0; line-height: 1.55; }
+  .sub strong { color: #eceefb; }
+  .card { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 14px;
+          padding: 16px; display: grid; gap: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  label { font-size: .92rem; display: grid; gap: 4px; font-weight: 600; }
+  label .hint { font-weight: 400; }
+  .hint { font-size: .8rem; color: var(--muted); margin: 0; }
+  textarea, input { font: inherit; padding: 8px 10px; border: 1px solid var(--panel-line); border-radius: 8px;
+                    background: #0e1130; color: #eceefb; width: 100%; }
+  textarea { resize: vertical; min-height: 54px; }
+  textarea::placeholder, input::placeholder { color: #6d74a3; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px;
+           background: var(--amber); color: #241a00; cursor: pointer; }
+  button:hover { background: #ffc84f; }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.ghost { background: #232858; color: #cfd4ff; }
+  button.small { padding: 6px 10px; font-size: .8rem; }
+  #status { font-size: .85rem; color: var(--muted); min-height: 1.2em; margin: 0; }
+  progress { width: 100%; height: 8px; accent-color: var(--amber); }
+  #nightlog { margin-top: 18px; background: #0e1130; border: 1px solid var(--panel-line);
+              border-radius: 14px; padding: 16px 20px; }
+  #nightlog h2 { margin: 0 0 8px; font-size: 1.05rem; color: var(--amber); }
+  #nightlog ul { list-style: none; margin: 0; padding: 0; line-height: 1.9; color: var(--muted); }
+  #nightlog li.done { color: #eceefb; }
+  #nightlog li .box { display: inline-block; width: 1.4em; }
+  #brief { margin-top: 18px; background: var(--paper); color: var(--ink); border-radius: 16px;
+           padding: 22px; border-top: 6px solid var(--amber); }
+  #brief h2 { margin: 0 0 2px; }
+  #brief .when { color: var(--muted2); font-size: .85rem; margin: 0 0 14px; }
+  .sec { margin-bottom: 16px; }
+  .sec h3 { margin: 0 0 6px; font-size: 1rem; color: var(--amber-dark); }
+  .sec ol, .sec ul { margin: 0; padding-left: 20px; line-height: 1.6; }
+  .sec p { margin: 0; line-height: 1.6; }
+  .reply { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+           padding: 6px 0; border-bottom: 1px dashed #e3dcc4; }
+  .reply:last-child { border-bottom: 0; }
+  .reply .txt { line-height: 1.55; }
+  .reply .who { font-weight: 700; }
+  .decision { background: #fdf1d3; border-radius: 10px; padding: 12px 14px; line-height: 1.55; }
+  .raw { white-space: pre-wrap; font-size: .85rem; color: var(--muted2); }
+  #saved-banner { margin-top: 14px; background: #1d2148; border: 1px solid var(--panel-line);
+                   border-radius: 10px; padding: 10px 14px; font-size: .9rem; color: var(--muted); }
+  footer { text-align: center; color: #79809f; font-size: .8rem; margin-top: 32px; line-height: 1.6; }
+  footer a, .sub a { color: var(--amber); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="moon">🌙</span> Chief of Staff</h1>
+  <p class="sub"><strong>You sleep. It works the night shift.</strong><br/>
+     Before bed, dump tomorrow's schedule, your unread messages and whatever is on your mind.
+     A 270M-parameter <strong>Gemma 3</strong> running <strong>100% in your browser</strong> reads it all overnight
+     and hands you a finished morning brief: your top 3 priorities, replies already drafted, and one
+     decision already made. A chief of staff sees your most private text — this one never sends it anywhere.</p>
+
+  <section class="card" id="night-desk">
+    <label>📅 Tomorrow's schedule
+      <textarea id="in-schedule" placeholder="e.g. 9:00 lecture. 11:30 team standup. 14:00 office hours. 18:00 call with landlord."></textarea>
+    </label>
+    <label>💬 Unread messages
+      <textarea id="in-messages" placeholder="Paste the chats and emails you haven't answered yet — names help."></textarea>
+    </label>
+    <label>🧠 On your mind
+      <textarea id="in-mind" placeholder="Worries, loose ends, half-finished things. Brain-dump it; sorting it out is literally the night shift's job."></textarea>
+    </label>
+    <label>🎯 One decision you're putting off <span class="hint">(optional — your chief of staff will just make it)</span>
+      <input id="in-decision" placeholder="e.g. Gym tomorrow, or rest?" />
+    </label>
+    <div class="row2">
+      <button id="go">🌙 Start the night shift</button>
+      <button id="demo" class="ghost">✨ Demo night (prefilled)</button>
+    </div>
+    <p id="status">Model not loaded yet — first load downloads it (~1&nbsp;GB, fp32 — the same verified setup as my Week 1 &amp; 2 projects). After that it is cached and works fully offline.</p>
+    <progress id="bar" value="0" max="100" hidden></progress>
+  </section>
+
+  <div id="saved-banner" hidden></div>
+
+  <section id="nightlog" hidden>
+    <h2>🌙 The night shift</h2>
+    <ul id="log-list"></ul>
+  </section>
+
+  <article id="brief" hidden>
+    <h2>☀️ Your morning brief</h2>
+    <p class="when" id="brief-when"></p>
+    <div class="sec" id="sec-priorities">
+      <h3>🎯 Top 3 today</h3>
+      <ol id="b-priorities"></ol>
+      <p class="raw" id="raw-priorities" hidden></p>
+    </div>
+    <div class="sec" id="sec-replies">
+      <h3>✍️ Replies, drafted</h3>
+      <div id="b-replies"></div>
+      <p class="raw" id="raw-replies" hidden></p>
+    </div>
+    <div class="sec" id="sec-decision" hidden>
+      <h3>✅ Decided for you</h3>
+      <div class="decision" id="b-decision"></div>
+      <p class="raw" id="raw-decision" hidden></p>
+    </div>
+    <div class="row2">
+      <button id="copy-brief" class="ghost">📋 Copy the whole brief</button>
+      <button id="again" class="ghost">🔀 Re-run the night shift</button>
+    </div>
+    <p class="hint" style="color:var(--muted2);margin-top:10px;">Drafts are drafts — read before you send. Your chief of staff is 270M parameters of confidence, not wisdom.</p>
+  </article>
+
+  <footer>
+    Built with <a href="https://ai.google.dev/gemma">Gemma 3 270M</a> (open weights) +
+    <a href="https://huggingface.co/docs/transformers.js">Transformers.js</a>.
+    All inference happens on your device — your schedule and messages never leave it.<br/>
+    A Hacktoberfest “Slow and Steady” project: the laziest productivity system is the one that works while you sleep.
+  </footer>
+</main>
+
+<script type="module">
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.min.js';
+
+// ---------- Model setup (verified in Week 1 & 2 — do not change lightly) ----------
+const MODEL_ID = 'onnx-community/gemma-3-270m-it-ONNX';
+
+// ---------- Prompts: three small strict-format jobs, sized for a 270M model ----------
+const SYS_PRIORITIES = `You are a chief of staff preparing a morning brief. From tomorrow's schedule and the user's brain dump, pick the 3 most important things for tomorrow. Output EXACTLY three lines and nothing else:
+
+PRIORITY 1: <task, under 12 words> — <why it matters, under 12 words>
+PRIORITY 2: <task> — <why>
+PRIORITY 3: <task> — <why>
+
+Rules: only use facts from the input. Never invent dates, names, or events.`;
+
+// The priorities example travels as a prior conversation turn, NOT inside the
+// system prompt, and this job runs GREEDY: with the example inline the 270M
+// model parroted the example output verbatim for any input, and even as a
+// turn, sampling fell back into repeating it in ~1/3 of runs (stress-tested
+// 2026-10-23: inline+sampling echo 3/3, turn+sampling echo 3/9, turn+greedy
+// echo 0/17). Replies and decision keep their examples inline + sampling —
+// measured better there (replies via turn collapsed to 1 draft in 9/9 runs;
+// decision via turn dropped its WHY line). Per-job settings are deliberate.
+const EX_PRIORITIES = {
+  in: "Schedule: Team standup 9:30. Dentist 14:00. Brain dump: The project demo is Friday and my slides are not started. Mom's birthday is this week, no gift yet. Landlord emailed about the lease renewal.",
+  out: "PRIORITY 1: Start the demo slides — the demo is Friday and nothing exists yet\nPRIORITY 2: Buy a birthday gift for Mom — her birthday is this week and shipping takes days\nPRIORITY 3: Reply to the landlord about the renewal — leases have deadlines and silence costs money"
+};
+
+const SYS_REPLIES = `You are a chief of staff drafting replies. From the unread messages, pick up to 3 that most need an answer and draft a short, warm reply for each. Output EXACTLY one line per reply and nothing else:
+
+REPLY TO <name or topic>: <draft reply, 1-2 short sentences>
+
+Example:
+Input: Messages: 1) Sarah (lab partner): "Did you finish your part of the lab report? It is due tomorrow." 2) Group chat: memes about the game. 3) TA for Prof. Lee: "Office hours moved to Thursday this week."
+Output:
+REPLY TO Sarah: Almost there — I will send you my section tonight so you can merge it before tomorrow.
+REPLY TO Prof. Lee's TA: Thanks for the heads-up, Thursday works for me.
+
+Rules: only draft replies to messages that ask something or need a response. Skip jokes, memes, and announcements that need no answer. Never invent facts, dates, or promises about things the input does not mention.`;
+
+// NOTE: unlike priorities/replies, the decision prompt KEEPS its example inline
+// — moving it to a conversation turn made the model stop after the DECISION
+// line and drop the WHY (1/5 vs 3/3 inline, verified 2026-10-23). Do not
+// "harmonise" this without re-testing.
+const SYS_DECISION = `You are a chief of staff who makes small decisions so your boss does not have to. The user is putting off one small decision. Decide it and justify it in one line. Output EXACTLY two lines and nothing else:
+
+DECISION: <the choice, under 10 words>
+WHY: <one short reason>
+
+Example:
+Input: Decision I'm putting off: Should I cook or order takeout tonight? Context: I have eggs and rice at home, I am tired, payday is next week.
+Output:
+DECISION: Cook eggs and rice at home
+WHY: Food is already in the fridge, you are tired, and payday is next week
+
+Rules: pick ONE option clearly. Only use facts from the input.`;
+
+// ---------- Demo night: a realistic sample so anyone can try it in 10 seconds ----------
+const DEMO = {
+  schedule: "9:00 CS 461 lecture. 11:30 Team standup. 14:00 Office hours with Prof. Carter. 16:00 Gym (maybe). 19:00 Dinner with Aaron to plan the project.",
+  messages: "1) Aaron: \"For tomorrow's standup, can you bring the updated team charter draft? Everyone is waiting on it.\" 2) Mom (text): \"Your cousin's wedding is next month — have you booked your flight home yet?\" 3) Group chat 'weekend-plans': 14 unread messages, mostly memes about hiking.",
+  mind: "The team charter draft is half done and the team needs it tomorrow. I still haven't replied to Mom about the wedding flight and prices keep going up. I slept badly all week, so I want to keep tomorrow light after 5pm.",
+  decision: "Should I go to the gym tomorrow or rest?"
+};
+
+// ---------- State ----------
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status'), bar = $('bar'), goBtn = $('go');
+const LS_KEY = 'cos_last_night_v1';
+let generator = null;
+let current = null; // { inputs, priorities[], replies[], decision{choice,why}|null, raw{}, ts }
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+async function loadModel() {
+  if (generator) return generator;
+  const onProgress = (p) => {
+    if (p.status === 'progress' && p.total) {
+      bar.hidden = false;
+      bar.value = Math.round((p.loaded / p.total) * 100);
+      setStatus(`Downloading model… ${bar.value}% (one-time, cached afterwards)`);
+    }
+  };
+  try {
+    // NOTE: fp32 only — the ONNX Runtime WebGPU fp16 path overflows for
+    // gemma-3-270m-it-ONNX and emits repeated <unused56> tokens (verified Week 1).
+    generator = await pipeline('text-generation', MODEL_ID, {
+      device: 'webgpu', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WebGPU, fp32). Everything runs on this device.');
+  } catch (e) {
+    setStatus('WebGPU unavailable — falling back to WASM (fp32)…');
+    generator = await pipeline('text-generation', MODEL_ID, { device: 'wasm', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WASM, fp32). Everything runs on this device.');
+  }
+  bar.hidden = true;
+  return generator;
+}
+
+async function generate(system, user, maxTokens = 220, example = null, greedy = false) {
+  const gen = await loadModel();
+  const messages = example
+    ? [{ role: 'system', content: system },
+       { role: 'user', content: 'Input: ' + example.in + '\nOutput:' },
+       { role: 'assistant', content: example.out },
+       { role: 'user', content: user }]
+    : [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const out = await gen(messages, greedy
+    ? { max_new_tokens: maxTokens, do_sample: false }
+    : { max_new_tokens: maxTokens, do_sample: true, temperature: 0.7, top_p: 0.95 }
+  );
+  const text = Array.isArray(out[0].generated_text)
+    ? out[0].generated_text.at(-1).content
+    : String(out[0].generated_text);
+  if (/(<unused\d+>\s*){3,}/.test(text)) throw new Error('garbage-tokens');
+  return text.trim();
+}
+
+// ---------- Parsers (strict formats; raw fallback if the model wanders) ----------
+function parsePriorities(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^PRIORITY\s*\d+\s*:\s*(.+)$/i);
+    if (m) out.push(m[1].trim());
+  }
+  return out.slice(0, 3);
+}
+function parseReplies(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^REPLY TO\s+(.+?)\s*:\s*(.+)$/i);
+    if (m) out.push({ who: m[1].trim(), text: m[2].trim() });
+  }
+  return out.slice(0, 3);
+}
+function parseDecision(text) {
+  let choice = '', why = '';
+  for (const line of text.split('\n')) {
+    let m = line.match(/^DECISION\s*:\s*(.+)$/i); if (m) choice = m[1].trim();
+    m = line.match(/^WHY\s*:\s*(.+)$/i); if (m) why = m[1].trim();
+  }
+  return choice ? { choice, why } : null;
+}
+
+// ---------- Night log ----------
+const LOG_STEPS = [
+  'Read tomorrow\u2019s schedule',
+  'Sorted the day \u2014 picked your top 3',
+  'Triaged the unread messages',
+  'Drafted replies in your voice',
+  'Made the call you were putting off',
+  'Brief brewed. Sleep well. \u2600\uFE0F'
+];
+function renderLog(doneCount, activeIdx) {
+  const ul = $('log-list');
+  ul.innerHTML = '';
+  LOG_STEPS.forEach((label, i) => {
+    const inp = current && current.inputs;
+    if (i === 1 && !(inp && (inp.schedule || inp.mind))) return; // nothing to sort, no step
+    if ((i === 2 || i === 3) && !(inp && inp.messages)) return; // no messages, no steps
+    if (i === 4 && !(inp && inp.decision)) return; // no decision asked, no step
+    const li = document.createElement('li');
+    if (i < doneCount) li.className = 'done';
+    const box = document.createElement('span');
+    box.className = 'box';
+    box.textContent = i < doneCount ? '\u2611\uFE0F' : (i === activeIdx ? '\u231B' : '\u2610');
+    li.append(box, document.createTextNode(label));
+    ul.append(li);
+  });
+  $('nightlog').hidden = false;
+}
+
+// ---------- Render the brief ----------
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function renderBrief() {
+  const b = current;
+  $('brief').hidden = false;
+  $('brief-when').textContent = 'Brewed ' + new Date(b.ts).toLocaleString() +
+    ' \u00B7 by a 270M model that never left this browser';
+
+  const pol = $('b-priorities');
+  pol.innerHTML = '';
+  for (const p of b.priorities) {
+    const li = document.createElement('li');
+    li.textContent = p;
+    pol.append(li);
+  }
+  $('raw-priorities').hidden = b.priorities.length > 0;
+  if (!b.priorities.length) $('raw-priorities').textContent = b.raw.priorities ||
+    'Nothing to prioritise tonight — no schedule or brain dump was on the desk.';
+
+  const rel = $('b-replies');
+  rel.innerHTML = '';
+  const rawRel = $('raw-replies');
+  rawRel.hidden = true;
+  if (!b.replies.length) {
+    if (b.inputs.messages && b.raw.replies) {
+      // The model answered but wandered off-format — show the raw output with a note,
+      // never a wrong "all clear" when the user actually pasted messages.
+      rawRel.hidden = false;
+      rawRel.textContent = 'The model wandered off-format, so here is its raw take — copy the bits you like:\n\n' + b.raw.replies;
+    } else {
+      const p = document.createElement('p');
+      p.textContent = 'Nothing in the pile needs an answer tonight. Enjoy that.';
+      rel.append(p);
+    }
+  }
+  for (const r of b.replies) {
+    const row = document.createElement('div');
+    row.className = 'reply';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.innerHTML = '<span class="who">' + esc(r.who) + ':</span> ' + esc(r.text);
+    const btn = document.createElement('button');
+    btn.className = 'ghost small';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(r.text); btn.textContent = 'Copied \u2713'; }
+      catch { btn.textContent = 'Copy failed'; }
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+    });
+    row.append(txt, btn);
+    rel.append(row);
+  }
+  if (b.decision) {
+    $('sec-decision').hidden = false;
+    $('b-decision').innerHTML = '<strong>' + esc(b.decision.choice) + '</strong>' +
+      (b.decision.why ? '<br/><span style="color:var(--muted2)">' + esc(b.decision.why) + '</span>' : '');
+  } else if (b.inputs.decision && b.raw.decision) {
+    // Same silent-failure class as the replies fix: the model answered but
+    // wandered off-format — show its raw take instead of dropping the decision.
+    $('sec-decision').hidden = false;
+    $('b-decision').innerHTML = '<span style="color:var(--muted2)">The model wandered off-format — here is its raw take:</span><br/>' +
+      esc(b.raw.decision).replace(/\n/g, '<br/>');
+  } else {
+    $('sec-decision').hidden = true;
+  }
+  $('brief').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function briefToMarkdown() {
+  const b = current;
+  const lines = ['# \u2600\uFE0F Morning brief \u2014 ' + new Date(b.ts).toLocaleDateString(), '', '## Top 3 today'];
+  if (b.priorities.length) b.priorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
+  else if (b.raw.priorities) lines.push(b.raw.priorities);
+  else lines.push('- (nothing to prioritise tonight)');
+  lines.push('', '## Drafted replies');
+  if (b.replies.length) b.replies.forEach(r => lines.push(`- **${r.who}:** ${r.text}`));
+  else lines.push('- (nothing needs an answer)');
+  if (b.decision) {
+    lines.push('', '## Decided for you', `**${b.decision.choice}**${b.decision.why ? ' \u2014 ' + b.decision.why : ''}`);
+  } else if (b.raw.decision) {
+    lines.push('', '## Decided for you (model went off-format — raw take)', b.raw.decision);
+  }
+  return lines.join('\n');
+}
+
+// ---------- The night shift ----------
+async function runNightShift() {
+  const inputs = {
+    schedule: $('in-schedule').value.trim(),
+    messages: $('in-messages').value.trim(),
+    mind: $('in-mind').value.trim(),
+    decision: $('in-decision').value.trim()
+  };
+  if (!inputs.schedule && !inputs.messages && !inputs.mind) {
+    setStatus('Your chief of staff needs something to work with \u2014 fill in at least one box, or try the Demo night.');
+    return;
+  }
+  goBtn.disabled = true;
+  $('demo').disabled = true;
+  current = { inputs, priorities: [], replies: [], decision: null, raw: {}, ts: Date.now() };
+  try {
+    renderLog(0, 0);
+    setStatus('First, the shape of tomorrow\u2026');
+    if (inputs.schedule || inputs.mind) {
+      const rawP = await generate(SYS_PRIORITIES,
+        `Input: Schedule: ${inputs.schedule || 'nothing scheduled'}. Brain dump: ${inputs.mind || 'nothing'}.\nOutput:`, 220, EX_PRIORITIES, true);
+      current.raw.priorities = rawP;
+      current.priorities = parsePriorities(rawP);
+    }
+    renderLog(2, 2);
+    setStatus('Triaging the message pile\u2026');
+    if (inputs.messages) {
+      const rawR = await generate(SYS_REPLIES, `Input: Messages: ${inputs.messages}\nOutput:`);
+      current.raw.replies = rawR;
+      current.replies = parseReplies(rawR);
+    }
+    renderLog(4, 4);
+    if (inputs.decision) {
+      setStatus('Making the call you were putting off\u2026');
+      const rawD = await generate(SYS_DECISION,
+        `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+      current.raw.decision = rawD;
+      current.decision = parseDecision(rawD);
+    }
+    renderLog(6, -1);
+    current.ts = Date.now();
+    localStorage.setItem(LS_KEY, JSON.stringify(current));
+    renderBrief();
+    setStatus('Brief ready. Total bytes of your private life that left this device: 0.');
+  } catch (err) {
+    console.error(err);
+    if (String(err && err.message) === 'garbage-tokens') {
+      setStatus('The model produced garbage tokens \u2014 reload the page and let it take the fp32 path again.');
+    } else {
+      setStatus('Something went wrong on the night shift \u2014 check the console and try again.');
+    }
+  } finally {
+    goBtn.disabled = false;
+    $('demo').disabled = false;
+  }
+}
+
+// ---------- Wiring ----------
+goBtn.addEventListener('click', runNightShift);
+$('again').addEventListener('click', runNightShift);
+$('demo').addEventListener('click', () => {
+  $('in-schedule').value = DEMO.schedule;
+  $('in-messages').value = DEMO.messages;
+  $('in-mind').value = DEMO.mind;
+  $('in-decision').value = DEMO.decision;
+  setStatus('Demo night loaded \u2014 a fictional but very plausible tomorrow. Hit \u201CStart the night shift\u201D.');
+});
+$('copy-brief').addEventListener('click', async (e) => {
+  try { await navigator.clipboard.writeText(briefToMarkdown()); e.target.textContent = '\u2713 Copied'; }
+  catch { e.target.textContent = 'Copy failed'; }
+  setTimeout(() => { e.target.textContent = '\uD83D\uDCCB Copy the whole brief'; }, 1500);
+});
+
+// Restore last night's brief, if there is one
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+  if (saved && (saved.priorities.length || saved.replies.length || saved.decision)) {
+    current = saved;
+    const banner = $('saved-banner');
+    banner.hidden = false;
+    banner.textContent = '\uD83C\uDF19 Welcome back \u2014 your chief of staff kept last night\u2019s brief for you (' +
+      new Date(saved.ts).toLocaleString() + '). Scroll down, or start a new night above.';
+    renderBrief();
+    $('brief-when').textContent = 'From last night \u00B7 ' + new Date(saved.ts).toLocaleString();
+  }
+} catch { /* corrupted storage is not worth an error */ }
+</script>
+</body>
+</html>

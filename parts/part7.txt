@@ -1,8 +1,0 @@
-      new Date(saved.ts).toLocaleString() + '). Scroll down, or start a new night above.';
-    renderBrief();
-    $('brief-when').textContent = 'From last night \u00B7 ' + new Date(saved.ts).toLocaleString();
-  }
-} catch { /* corrupted storage is not worth an error */ }
-</script>
-</body>
-</html>
