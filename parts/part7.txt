@@ -1,0 +1,35 @@
+  }
+}
+
+// ---------- Wiring ----------
+goBtn.addEventListener('click', runNightShift);
+$('again').addEventListener('click', runNightShift);
+$('demo').addEventListener('click', () => {
+  $('in-schedule').value = DEMO.schedule;
+  $('in-messages').value = DEMO.messages;
+  $('in-mind').value = DEMO.mind;
+  $('in-decision').value = DEMO.decision;
+  setStatus('Demo night loaded \u2014 a fictional but very plausible tomorrow. Hit \u201CStart the night shift\u201D.');
+});
+$('copy-brief').addEventListener('click', async (e) => {
+  try { await navigator.clipboard.writeText(briefToMarkdown()); e.target.textContent = '\u2713 Copied'; }
+  catch { e.target.textContent = 'Copy failed'; }
+  setTimeout(() => { e.target.textContent = '\uD83D\uDCCB Copy the whole brief'; }, 1500);
+});
+
+// Restore last night's brief, if there is one
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+  if (saved && (saved.priorities.length || saved.replies.length || saved.decision)) {
+    current = saved;
+    const banner = $('saved-banner');
+    banner.hidden = false;
+    banner.textContent = '\uD83C\uDF19 Welcome back \u2014 your chief of staff kept last night\u2019s brief for you (' +
+      new Date(saved.ts).toLocaleString() + '). Scroll down, or start a new night above.';
+    renderBrief();
+    $('brief-when').textContent = 'From last night \u00B7 ' + new Date(saved.ts).toLocaleString();
+  }
+} catch { /* corrupted storage is not worth an error */ }
+</script>
+</body>
+</html>
