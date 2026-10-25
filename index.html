@@ -142,7 +142,7 @@ import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers
 const MODEL_ID = 'onnx-community/gemma-3-270m-it-ONNX';
 
 // ---------- Prompts: three small strict-format jobs, sized for a 270M model ----------
-const SYS_PRIORITIES = `You are a chief of staff preparing a morning brief. From tomorrow's schedule and the user's brain dump, pick the 3 most important things for tomorrow. Output EXACTLY three lines and nothing else:
+const SYS_PRIORITIES = `You are a chief of staff preparing a morning brief. From tomorrow's schedule and the user's brain dump, pick the 3 most important things for tomorrow. Output up to three lines and nothing else (fewer is fine if the input has fewer important things — never pad with invented items):
 
 PRIORITY 1: <task, under 12 words> — <why it matters, under 12 words>
 PRIORITY 2: <task> — <why>
@@ -158,6 +158,17 @@ Rules: only use facts from the input. Never invent dates, names, or events.`;
 // echo 0/17). Replies and decision keep their examples inline + sampling —
 // measured better there (replies via turn collapsed to 1 draft in 9/9 runs;
 // decision via turn dropped its WHY line). Per-job settings are deliberate.
+//
+// 2026-10-25 real-input re-test (user's real Monday data): the turn+greedy
+// priorities job STILL echoed the example's line 3 (landlord) — forcing
+// exactly 3 lines makes the model pad with example content when the input
+// covers fewer items. Fix: "up to three lines" (verified: echo gone, all
+// lines from real input). Replies sampling collapsed to a bare "RE" with
+// zero drafts on the same real input; replies now run GREEDY (verified:
+// 1 draft to the right person). Decision stays inline + sampling: turn
+// drops WHY and zero-shot emits only "DECISION:" — the inline example is
+// load-bearing there, and its choice echo is a known model limitation,
+// disclosed in the write-up rather than hidden.
 const EX_PRIORITIES = {
   in: "Schedule: Team standup 9:30. Dentist 14:00. Brain dump: The project demo is Friday and my slides are not started. Mom's birthday is this week, no gift yet. Landlord emailed about the lease renewal.",
   out: "PRIORITY 1: Start the demo slides — the demo is Friday and nothing exists yet\nPRIORITY 2: Buy a birthday gift for Mom — her birthday is this week and shipping takes days\nPRIORITY 3: Reply to the landlord about the renewal — leases have deadlines and silence costs money"
@@ -419,7 +430,7 @@ async function runNightShift() {
     renderLog(2, 2);
     setStatus('Triaging the message pile\u2026');
     if (inputs.messages) {
-      const rawR = await generate(SYS_REPLIES, `Input: Messages: ${inputs.messages}\nOutput:`);
+      const rawR = await generate(SYS_REPLIES, `Input: Messages: ${inputs.messages}\nOutput:`, 220, null, true); // greedy: sampling collapsed to "RE" on real input 2026-10-25
       current.raw.replies = rawR;
       current.replies = parseReplies(rawR);
     }
