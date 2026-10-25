@@ -1,0 +1,82 @@
+WHY: <one short reason>
+
+Example:
+Input: Decision I'm putting off: Should I cook or order takeout tonight? Context: I have eggs and rice at home, I am tired, payday is next week.
+Output:
+DECISION: Cook eggs and rice at home
+WHY: Food is already in the fridge, you are tired, and payday is next week
+
+Rules: pick ONE option clearly. Only use facts from the input.`;
+
+// ---------- Demo night: a realistic sample so anyone can try it in 10 seconds ----------
+const DEMO = {
+  schedule: "9:00 CS 461 lecture. 11:30 Team standup. 14:00 Office hours with Prof. Carter. 16:00 Gym (maybe). 19:00 Dinner with Aaron to plan the project.",
+  messages: "1) Aaron: \"For tomorrow's standup, can you bring the updated team charter draft? Everyone is waiting on it.\" 2) Mom (text): \"Your cousin's wedding is next month — have you booked your flight home yet?\" 3) Group chat 'weekend-plans': 14 unread messages, mostly memes about hiking.",
+  mind: "The team charter draft is half done and the team needs it tomorrow. I still haven't replied to Mom about the wedding flight and prices keep going up. I slept badly all week, so I want to keep tomorrow light after 5pm.",
+  decision: "Should I go to the gym tomorrow or rest?"
+};
+
+// ---------- State ----------
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status'), bar = $('bar'), goBtn = $('go');
+const LS_KEY = 'cos_last_night_v1';
+let generator = null;
+let current = null; // { inputs, priorities[], replies[], decision{choice,why}|null, raw{}, ts }
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+async function loadModel() {
+  if (generator) return generator;
+  const onProgress = (p) => {
+    if (p.status === 'progress' && p.total) {
+      bar.hidden = false;
+      bar.value = Math.round((p.loaded / p.total) * 100);
+      setStatus(`Downloading model… ${bar.value}% (one-time, cached afterwards)`);
+    }
+  };
+  try {
+    // NOTE: fp32 only — the ONNX Runtime WebGPU fp16 path overflows for
+    // gemma-3-270m-it-ONNX and emits repeated <unused56> tokens (verified Week 1).
+    generator = await pipeline('text-generation', MODEL_ID, {
+      device: 'webgpu', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WebGPU, fp32). Everything runs on this device.');
+  } catch (e) {
+    setStatus('WebGPU unavailable — falling back to WASM (fp32)…');
+    generator = await pipeline('text-generation', MODEL_ID, { device: 'wasm', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WASM, fp32). Everything runs on this device.');
+  }
+  bar.hidden = true;
+  return generator;
+}
+
+async function generate(system, user, maxTokens = 220, example = null, greedy = false) {
+  const gen = await loadModel();
+  const messages = example
+    ? [{ role: 'system', content: system },
+       { role: 'user', content: 'Input: ' + example.in + '\nOutput:' },
+       { role: 'assistant', content: example.out },
+       { role: 'user', content: user }]
+    : [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const out = await gen(messages, greedy
+    ? { max_new_tokens: maxTokens, do_sample: false }
+    : { max_new_tokens: maxTokens, do_sample: true, temperature: 0.7, top_p: 0.95 }
+  );
+  const text = Array.isArray(out[0].generated_text)
+    ? out[0].generated_text.at(-1).content
+    : String(out[0].generated_text);
+  if (/(<unused\d+>\s*){3,}/.test(text)) throw new Error('garbage-tokens');
+  return text.trim();
+}
+
+// ---------- Parsers (strict formats; raw fallback if the model wanders) ----------
+function parsePriorities(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^PRIORITY\s*\d+\s*:\s*(.+)$/i);
+    if (m) out.push(m[1].trim());
+  }
+  return out.slice(0, 3);
+}
+function parseReplies(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
