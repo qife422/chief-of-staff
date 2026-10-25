@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chief of Staff — you sleep, it works the night shift</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌙</text></svg>" />
+<style>
+  :root {
+    --night:#0b0e22; --panel:#141836; --panel-line:#2c3263;
+    --amber:#f2b33d; --amber-dark:#8a5a00;
+    --paper:#fffaf0; --ink:#25222e; --muted:#a7aede; --muted2:#5d5a70;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: linear-gradient(180deg, #07081a, var(--night) 30%, #10142e); color:#eceefb; }
+  main { max-width: 740px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 2rem; margin: 8px 0 4px; }
+  h1 .moon { color: var(--amber); }
+  .sub { color: var(--muted); margin-top: 0; line-height: 1.55; }
+  .sub strong { color: #eceefb; }
+  .card { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 14px;
+          padding: 16px; display: grid; gap: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  label { font-size: .92rem; display: grid; gap: 4px; font-weight: 600; }
+  label .hint { font-weight: 400; }
+  .hint { font-size: .8rem; color: var(--muted); margin: 0; }
+  textarea, input { font: inherit; padding: 8px 10px; border: 1px solid var(--panel-line); border-radius: 8px;
+                    background: #0e1130; color: #eceefb; width: 100%; }
+  textarea { resize: vertical; min-height: 54px; }
+  textarea::placeholder, input::placeholder { color: #6d74a3; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px;
+           background: var(--amber); color: #241a00; cursor: pointer; }
+  button:hover { background: #ffc84f; }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.ghost { background: #232858; color: #cfd4ff; }
+  button.small { padding: 6px 10px; font-size: .8rem; }
+  #status { font-size: .85rem; color: var(--muted); min-height: 1.2em; margin: 0; }
+  progress { width: 100%; height: 8px; accent-color: var(--amber); }
+  #nightlog { margin-top: 18px; background: #0e1130; border: 1px solid var(--panel-line);
+              border-radius: 14px; padding: 16px 20px; }
+  #nightlog h2 { margin: 0 0 8px; font-size: 1.05rem; color: var(--amber); }
+  #nightlog ul { list-style: none; margin: 0; padding: 0; line-height: 1.9; color: var(--muted); }
+  #nightlog li.done { color: #eceefb; }
+  #nightlog li .box { display: inline-block; width: 1.4em; }
+  #brief { margin-top: 18px; background: var(--paper); color: var(--ink); border-radius: 16px;
+           padding: 22px; border-top: 6px solid var(--amber); }
+  #brief h2 { margin: 0 0 2px; }
+  #brief .when { color: var(--muted2); font-size: .85rem; margin: 0 0 14px; }
+  .sec { margin-bottom: 16px; }
+  .sec h3 { margin: 0 0 6px; font-size: 1rem; color: var(--amber-dark); }
+  .sec ol, .sec ul { margin: 0; padding-left: 20px; line-height: 1.6; }
+  .sec p { margin: 0; line-height: 1.6; }
+  .reply { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+           padding: 6px 0; border-bottom: 1px dashed #e3dcc4; }
+  .reply:last-child { border-bottom: 0; }
+  .reply .txt { line-height: 1.55; }
+  .reply .who { font-weight: 700; }
+  .decision { background: #fdf1d3; border-radius: 10px; padding: 12px 14px; line-height: 1.55; }
+  .raw { white-space: pre-wrap; font-size: .85rem; color: var(--muted2); }
+  #saved-banner { margin-top: 14px; background: #1d2148; border: 1px solid var(--panel-line);
+                   border-radius: 10px; padding: 10px 14px; font-size: .9rem; color: var(--muted); }
