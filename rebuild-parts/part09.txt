@@ -1,0 +1,78 @@
+      // majority vote: 3 fixed samples, each guard-checked (on-topic, WHY
+      // non-empty), then resolveDecisionVote. Asymmetry, disclosed in the
+      // write-up: flipped samples are rejected before voting, so a
+      // hold-pattern question can only resolve hold-side or abstain — never
+      // continue-side. Safe direction: an honest abstention beats a wrong
+      // call. Other questions keep first-accept (max 3 attempts).
+      let accepted = null, lastRaw = '';
+      const isHoldPattern = /whether to (put|place|keep).* (on hold|pause|postpone|defer)/i.test(inputs.decision);
+      if (isHoldPattern) {
+        const samples = [];
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const rawD = await generate(SYS_DECISION,
+            `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+          lastRaw = rawD;
+          const parsed = parseDecision(rawD);
+          if (parsed && parsed.why && isOnTopicDecision(parsed.choice, inputs.decision)) samples.push(parsed);
+        }
+        accepted = resolveDecisionVote(samples);
+      } else {
+        for (let attempt = 0; attempt < 3 && !accepted; attempt++) {
+          const rawD = await generate(SYS_DECISION,
+            `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+          lastRaw = rawD;
+          const parsed = parseDecision(rawD);
+          if (parsed && parsed.why && isOnTopicDecision(parsed.choice, inputs.decision)) accepted = parsed;
+        }
+      }
+      current.raw.decision = lastRaw;
+      current.decision = accepted;
+      current.decisionUndecided = !accepted;
+    }
+    renderLog(6, -1);
+    current.ts = Date.now();
+    localStorage.setItem(LS_KEY, JSON.stringify(current));
+    renderBrief();
+    setStatus('Brief ready. Total bytes of your private life that left this device: 0.');
+  } catch (err) {
+    console.error(err);
+    if (String(err && err.message) === 'garbage-tokens') {
+      setStatus('The model produced garbage tokens \u2014 reload the page and let it take the fp32 path again.');
+    } else {
+      setStatus('Something went wrong on the night shift \u2014 check the console and try again.');
+    }
+  } finally {
+    goBtn.disabled = false;
+    $('demo').disabled = false;
+  }
+}
+
+// ---------- Wiring ----------
+goBtn.addEventListener('click', runNightShift);
+$('again').addEventListener('click', runNightShift);
+$('demo').addEventListener('click', () => {
+  $('in-schedule').value = DEMO.schedule;
+  $('in-messages').value = DEMO.messages;
+  $('in-mind').value = DEMO.mind;
+  $('in-decision').value = DEMO.decision;
+  setStatus('Demo night loaded \u2014 a fictional but very plausible tomorrow. Hit \u201CStart the night shift\u201D.');
+});
+$('copy-brief').addEventListener('click', async (e) => {
+  try { await navigator.clipboard.writeText(briefToMarkdown()); e.target.textContent = '\u2713 Copied'; }
+  catch { e.target.textContent = 'Copy failed'; }
+  setTimeout(() => { e.target.textContent = '\uD83D\uDCCB Copy the whole brief'; }, 1500);
+});
+
+// Restore last night's brief, if there is one
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+  if (saved && (saved.priorities.length || saved.replies.length || saved.decision)) {
+    current = saved;
+    const banner = $('saved-banner');
+    banner.hidden = false;
+    banner.textContent = '\uD83C\uDF19 Welcome back \u2014 your chief of staff kept last night\u2019s brief for you (' +
+      new Date(saved.ts).toLocaleString() + '). Scroll down, or start a new night above.';
+    renderBrief();
+    $('brief-when').textContent = 'From last night \u00B7 ' + new Date(saved.ts).toLocaleString();
+  }
+} catch { /* corrupted storage is not worth an error */ }
