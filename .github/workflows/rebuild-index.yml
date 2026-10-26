@@ -1,0 +1,29 @@
+name: rebuild-index
+
+# One-shot rebuild: committed LAST, after all rebuild-parts/part*.txt slices.
+# The push that adds this file triggers the run (unfiltered push trigger),
+# because the parts-only pushes before it trigger nothing (no workflow yet).
+# The run concatenates the slices into index.html, commits, deletes the
+# slices and this workflow file, and pushes. The rebuild commit itself does
+# not re-trigger (the workflow file is gone from the new tree), so the run
+# is self-terminating. Pages rebuilds from the pushed index.html.
+on: push
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild index.html from slices
+        run: |
+          cat rebuild-parts/part*.txt > index.html
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          rm -rf rebuild-parts .github/workflows/rebuild-index.yml
+          git add -A
+          git commit -m "Rebuild index.html (majority-vote decision guard)"
+          git push
