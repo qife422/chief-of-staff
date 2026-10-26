@@ -1,0 +1,93 @@
+    const c = s.choice.toLowerCase();
+    if (/(don't|dont|do not|never|not|stop|quit)\s+(continue|keep|carry|persist)\b/.test(c)) return true;
+    return HOLD_SIDE_WORDS.some(w => c.includes(w));
+  });
+  return holdVotes.length >= 2 ? holdVotes[0] : null;
+}
+
+// ---------- Night log ----------
+const LOG_STEPS = [
+  'Read tomorrow\u2019s schedule',
+  'Sorted the day \u2014 picked your top 3',
+  'Triaged the unread messages',
+  'Drafted replies in your voice',
+  'Made the call you were putting off',
+  'Brief brewed. Sleep well. \u2600\uFE0F'
+];
+function renderLog(doneCount, activeIdx) {
+  const ul = $('log-list');
+  ul.innerHTML = '';
+  LOG_STEPS.forEach((label, i) => {
+    const inp = current && current.inputs;
+    if (i === 1 && !(inp && (inp.schedule || inp.mind))) return; // nothing to sort, no step
+    if ((i === 2 || i === 3) && !(inp && inp.messages)) return; // no messages, no steps
+    if (i === 4 && !(inp && inp.decision)) return; // no decision asked, no step
+    const li = document.createElement('li');
+    if (i < doneCount) li.className = 'done';
+    const box = document.createElement('span');
+    box.className = 'box';
+    box.textContent = i < doneCount ? '\u2611\uFE0F' : (i === activeIdx ? '\u231B' : '\u2610');
+    li.append(box, document.createTextNode(label));
+    ul.append(li);
+  });
+  $('nightlog').hidden = false;
+}
+
+// ---------- Render the brief ----------
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function renderBrief() {
+  const b = current;
+  $('brief').hidden = false;
+  $('brief-when').textContent = 'Brewed ' + new Date(b.ts).toLocaleString() +
+    ' \u00B7 by a 270M model that never left this browser';
+
+  const pol = $('b-priorities');
+  pol.innerHTML = '';
+  for (const p of b.priorities) {
+    const li = document.createElement('li');
+    li.textContent = p;
+    pol.append(li);
+  }
+  $('raw-priorities').hidden = b.priorities.length > 0;
+  if (!b.priorities.length) $('raw-priorities').textContent = b.raw.priorities ||
+    'Nothing to prioritise tonight — no schedule or brain dump was on the desk.';
+
+  const rel = $('b-replies');
+  rel.innerHTML = '';
+  const rawRel = $('raw-replies');
+  rawRel.hidden = true;
+  if (!b.replies.length) {
+    if (b.inputs.messages && b.raw.replies) {
+      // The model answered but wandered off-format — show the raw output with a note,
+      // never a wrong "all clear" when the user actually pasted messages.
+      rawRel.hidden = false;
+      rawRel.textContent = 'The model wandered off-format, so here is its raw take — copy the bits you like:\n\n' + b.raw.replies;
+    } else {
+      const p = document.createElement('p');
+      p.textContent = 'Nothing in the pile needs an answer tonight. Enjoy that.';
+      rel.append(p);
+    }
+  }
+  for (const r of b.replies) {
+    const row = document.createElement('div');
+    row.className = 'reply';
+    const txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.innerHTML = '<span class="who">' + esc(r.who) + ':</span> ' + esc(r.text);
+    const btn = document.createElement('button');
+    btn.className = 'ghost small';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(r.text); btn.textContent = 'Copied \u2713'; }
+      catch { btn.textContent = 'Copy failed'; }
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+    });
+    row.append(txt, btn);
+    rel.append(row);
+  }
+  if (b.decision) {
+    $('sec-decision').hidden = false;
+    $('b-decision').innerHTML = '<strong>' + esc(b.decision.choice) + '</strong>' +
+      (b.decision.why ? '<br/><span style="color:var(--muted2)">' + esc(b.decision.why) + '</span>' : '');
+  } else if (b.decisionUndecided) {
