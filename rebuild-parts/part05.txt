@@ -1,0 +1,85 @@
+let current = null; // { inputs, priorities[], replies[], decision{choice,why}|null, raw{}, ts }
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+async function loadModel() {
+  if (generator) return generator;
+  const onProgress = (p) => {
+    if (p.status === 'progress' && p.total) {
+      bar.hidden = false;
+      bar.value = Math.round((p.loaded / p.total) * 100);
+      setStatus(`Downloading model… ${bar.value}% (one-time, cached afterwards)`);
+    }
+  };
+  try {
+    // NOTE: fp32 only — the ONNX Runtime WebGPU fp16 path overflows for
+    // gemma-3-270m-it-ONNX and emits repeated <unused56> tokens (verified Week 1).
+    generator = await pipeline('text-generation', MODEL_ID, {
+      device: 'webgpu', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WebGPU, fp32). Everything runs on this device.');
+  } catch (e) {
+    setStatus('WebGPU unavailable — falling back to WASM (fp32)…');
+    generator = await pipeline('text-generation', MODEL_ID, { device: 'wasm', dtype: 'fp32', progress_callback: onProgress });
+    setStatus('Chief of staff on site (WASM, fp32). Everything runs on this device.');
+  }
+  bar.hidden = true;
+  return generator;
+}
+
+async function generate(system, user, maxTokens = 220, example = null, greedy = false) {
+  const gen = await loadModel();
+  const messages = example
+    ? [{ role: 'system', content: system },
+       { role: 'user', content: 'Input: ' + example.in + '\nOutput:' },
+       { role: 'assistant', content: example.out },
+       { role: 'user', content: user }]
+    : [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const out = await gen(messages, greedy
+    ? { max_new_tokens: maxTokens, do_sample: false }
+    : { max_new_tokens: maxTokens, do_sample: true, temperature: 0.7, top_p: 0.95 }
+  );
+  const text = Array.isArray(out[0].generated_text)
+    ? out[0].generated_text.at(-1).content
+    : String(out[0].generated_text);
+  if (/(<unused\d+>\s*){3,}/.test(text)) throw new Error('garbage-tokens');
+  return text.trim();
+}
+
+// ---------- Parsers (strict formats; raw fallback if the model wanders) ----------
+function parsePriorities(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^PRIORITY\s*\d+\s*:\s*(.+)$/i);
+    if (m) out.push(m[1].trim());
+  }
+  return out.slice(0, 3);
+}
+function parseReplies(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^REPLY TO\s+(.+?)\s*:\s*(.+)$/i);
+    if (m) out.push({ who: m[1].trim(), text: m[2].trim() });
+  }
+  return out.slice(0, 3);
+}
+function parseDecision(text) {
+  let choice = '', why = '';
+  for (const line of text.split('\n')) {
+    let m = line.match(/^DECISION\s*:\s*(.+)$/i); if (m) choice = m[1].trim();
+    m = line.match(/^WHY\s*:\s*(.+)$/i); if (m) why = m[1].trim();
+  }
+  return choice ? { choice, why } : null;
+}
+
+// Decision-topic guard (2026-10-25): the 270M model copies the example's
+// OPTION on open-ended questions — anchored prompt alone went 0/8 on the
+// remote-job-hold adversarial input, and greedy locked the echo in. A parsed
+// choice is accepted only if it is not the example option verbatim and
+// shares at least one content word with the decision field. Anything else
+// is discarded and resampled; after retries the brief says undecided.
+// A narrow polarity rule (below) additionally rejects hold-vs-continue
+// flips, which shared-word checks cannot see.
+const DECISION_STOPWORDS = new Set(['a', 'an', 'the', 'to', 'or', 'and', 'of', 'i', 'my', 'me', 'should', 'whether', 'is', 'it', 'be', 'for', 'in', 'on', 'at', 'with', 'from', 'do', 'you', 'your']);
+function contentWords(s) {
+  return (s.toLowerCase().match(/[a-z]+/g) || []).filter(w => w.length >= 3 && !DECISION_STOPWORDS.has(w));
+}
