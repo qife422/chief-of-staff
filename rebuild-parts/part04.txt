@@ -1,0 +1,49 @@
+  in: "Schedule: Team standup 9:30. Dentist 14:00. Brain dump: The project demo is Friday and my slides are not started. Mom's birthday is this week, no gift yet. Landlord emailed about the lease renewal.",
+  out: "PRIORITY 1: Start the demo slides — the demo is Friday and nothing exists yet\nPRIORITY 2: Buy a birthday gift for Mom — her birthday is this week and shipping takes days\nPRIORITY 3: Reply to the landlord about the renewal — leases have deadlines and silence costs money"
+};
+
+const SYS_REPLIES = `You are a chief of staff drafting replies. From the unread messages, pick up to 3 that most need an answer and draft a short, warm reply for each. Output EXACTLY one line per reply and nothing else:
+
+REPLY TO <name or topic>: <draft reply, 1-2 short sentences>
+
+Example:
+Input: Messages: 1) Sarah (lab partner): "Did you finish your part of the lab report? It is due tomorrow." 2) Group chat: memes about the game. 3) TA for Prof. Lee: "Office hours moved to Thursday this week."
+Output:
+REPLY TO Sarah: Almost there — I will send you my section tonight so you can merge it before tomorrow.
+REPLY TO Prof. Lee's TA: Thanks for the heads-up, Thursday works for me.
+
+Rules: only draft replies to messages that ask something or need a response. Skip jokes, memes, and announcements that need no answer. Never invent facts, dates, or promises about things the input does not mention.`;
+
+// NOTE: unlike priorities/replies, the decision prompt KEEPS its example inline
+// — moving it to a conversation turn made the model stop after the DECISION
+// line and drop the WHY (1/5 vs 3/3 inline, verified 2026-10-23). Do not
+// "harmonise" this without re-testing.
+// 2026-10-25 A/B: anchoring the question in the prompt did not stop the model
+// copying the example's OPTION on open-ended questions (0/8 adversarial) —
+// the topic guard below is the actual fix, not the prompt wording.
+const SYS_DECISION = `You are a chief of staff who makes small decisions so your boss does not have to. The user is putting off one small decision. Decide it and justify it in one line. Output EXACTLY two lines and nothing else:
+
+DECISION: <the choice, under 10 words>
+WHY: <one short reason>
+
+Example:
+Input: Decision I'm putting off: Should I cook or order takeout tonight? Context: I have eggs and rice at home, I am tired, payday is next week.
+Output:
+DECISION: Cook eggs and rice at home
+WHY: Food is already in the fridge, you are tired, and payday is next week
+
+Rules: pick ONE option clearly. Only use facts from the input. The question you must decide is exactly the one written after 'Decision I'm putting off:'. Do NOT pick a different question from the Context — the Context only supplies reasons, never a substitute question.`;
+
+// ---------- Demo night: a realistic sample so anyone can try it in 10 seconds ----------
+const DEMO = {
+  schedule: "9:00 CS 461 lecture. 11:30 Team standup. 14:00 Office hours with Prof. Carter. 16:00 Gym (maybe). 19:00 Dinner with Aaron to plan the project.",
+  messages: "1) Aaron: \"For tomorrow's standup, can you bring the updated team charter draft? Everyone is waiting on it.\" 2) Mom (text): \"Your cousin's wedding is next month — have you booked your flight home yet?\" 3) Group chat 'weekend-plans': 14 unread messages, mostly memes about hiking.",
+  mind: "The team charter draft is half done and the team needs it tomorrow. I still haven't replied to Mom about the wedding flight and prices keep going up. I slept badly all week, so I want to keep tomorrow light after 5pm.",
+  decision: "Should I go to the gym tomorrow or rest?"
+};
+
+// ---------- State ----------
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status'), bar = $('bar'), goBtn = $('go');
+const LS_KEY = 'cos_last_night_v1';
+let generator = null;
