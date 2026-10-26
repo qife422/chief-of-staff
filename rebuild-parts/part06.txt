@@ -1,0 +1,57 @@
+function isOnTopicDecision(choice, decisionField) {
+  const norm = choice.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (norm === 'cook eggs and rice at home') return false; // the inline example's option
+  if (isPolarityFlipped(choice, decisionField)) return false; // opposite answer wearing shared words
+  // Morphology-tolerant overlap, not exact equality: "searching" must match
+  // "search" and "paused" must match "pause" ("Don't continue searching" is
+  // the pause side and must pass). Rule: one word starts with the other.
+  // That keeps "schedule" away from "school" (neither starts with the other)
+  // and "household" away from "hold" (it ends with hold, it does not start
+  // with it) — a raw shared-prefix test failed both of those in unit tests.
+  const fieldWords = contentWords(decisionField);
+  const sameStem = (a, b) => a === b || a.startsWith(b) || b.startsWith(a);
+  return contentWords(choice).some(cw => fieldWords.some(fw => sameStem(cw, fw)));
+}
+
+// Narrow polarity rule (2026-10-25): only for "whether to … on hold" style
+// questions. Two flip shapes, both safe-direction (a misfire only costs a
+// retry, never a wrong brief):
+//  1. Continuation verb without any hold word ("Continue search…").
+//  2. Negation of the hold action ("Don't put … on hold", "Never put … on
+//     hold", "Don't put off …") — the confirmation run proved plain
+//     continuation verbs miss this shape entirely, and the "hold" inside it
+//     would even neutralise shape 1.
+// Deliberately NOT flipped: a negated continuation ("Don't continue
+// searching") is the pause side, so it must pass through.
+const HOLD_WORDS = ['hold', 'pause', 'postpone', 'defer'];
+const CONTINUE_WORDS = ['continue', 'keep', 'carry', 'persist'];
+function isPolarityFlipped(choice, decisionField) {
+  if (!/whether to (put|place|keep).* (on hold|pause|postpone|defer)/i.test(decisionField)) return false;
+  // Normalise before pattern tests: periods in "U.S." broke the [^.] spans
+  // in the negation patterns, and curly apostrophes must match "don't".
+  const c = choice.toLowerCase().replace(/[\u2019\u2018]/g, "'").replace(/\./g, '');
+  // Shape 2: negation of the hold action itself.
+  if (/(don't|dont|do not|never|not)\b[^.]{0,60}\b(put|place|keep)\b[^.]{0,60}\b(on hold|pause|postpone|defer)\b/.test(c)) return true;
+  if (/(don't|dont|do not|never|not)\b[^.]{0,40}\bput off\b/.test(c)) return true;
+  // A negated continuation is the pause side, not a flip.
+  if (/(don't|dont|do not|never|not|stop|quit)\s+(continue|keep|carry|persist)\b/.test(c)) return false;
+  // Shape 1: continuation verb without any hold word. Substring match, not
+  // word-boundary match: inflections like "paused" and "holding" must still
+  // count as hold words (a \b…\b test missed "paused" and wrongly rejected
+  // a correct "Keep the search paused" in unit tests).
+  const hasContinue = CONTINUE_WORDS.some(w => c.includes(w));
+  const hasHold = HOLD_WORDS.some(w => c.includes(w));
+  return hasContinue && !hasHold;
+}
+
+// Majority vote for whether-to-hold questions (2026-10-25). Samples here
+// already passed the guard (on-topic, WHY non-empty). A sample votes
+// hold-side only on a pause marker or a negated continuation; anything else
+// that passed the guard (e.g. "Work on the search") is unknown and does not
+// vote. Two hold-side votes accept the first of them; otherwise null
+// (undecided). This trades recall for zero wrong calls on hard questions:
+// in the majority experiment, hard open questions went 0/4 accepted (all
+// undecided) while simple binary questions stayed 3-0.
+const HOLD_SIDE_WORDS = ['hold', 'pause', 'postpone', 'defer', 'cancel', 'stop', 'quit', 'drop'];
+function resolveDecisionVote(samples) {
+  const holdVotes = samples.filter(s => {
