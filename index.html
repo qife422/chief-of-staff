@@ -169,6 +169,30 @@ Rules: only use facts from the input. Never invent dates, names, or events.`;
 // drops WHY and zero-shot emits only "DECISION:" — the inline example is
 // load-bearing there, and its choice echo is a known model limitation,
 // disclosed in the write-up rather than hidden.
+//
+// 2026-10-25 decision A/B (real model): anchoring the question alone did NOT
+// fix off-topic choices — 0/8 on the remote-job-hold adversarial input, and
+// anchored+greedy locked the example echo in deterministically. The model
+// copies the example's OPTION on open-ended questions, not just its format.
+// So the decision job now has a topic guard with retries (see the helpers
+// after parseDecision): an off-topic or example-echo choice is discarded
+// and resampled (max 3 attempts); if none lands on-topic, the brief honestly
+// says undecided instead of dressing a wrong call as a decision.
+//
+// 2026-10-25 follow-up: v1 guard admitted a polarity-opposite answer
+// ('Continue search…') via shared words, so a narrow hold-vs-continue
+// polarity rule was added (function-verified 9/9, no observed false
+// rejects); greedy-first was tested and rejected (wastes attempt 1
+// deterministically on hard inputs); options-first was tested and rejected
+// (4/4 blank on hard inputs). Known residual holes, disclosed in the
+// write-up: adjacent-action accepts (a choice that mentions the topic but
+// does not answer the question) and unvalidated WHY.
+//
+// Majority vote (2026-10-25, same day): single-sample acceptance let one
+// unrecognised continue-side phrasing through per confirmation round, so
+// whether-to-hold questions now need 2 hold-side votes out of 3 samples or
+// the brief says undecided. Side-phrased example variant tested and rejected
+// (action phrases did not decrease; new example still got echoed).
 const EX_PRIORITIES = {
   in: "Schedule: Team standup 9:30. Dentist 14:00. Brain dump: The project demo is Friday and my slides are not started. Mom's birthday is this week, no gift yet. Landlord emailed about the lease renewal.",
   out: "PRIORITY 1: Start the demo slides — the demo is Friday and nothing exists yet\nPRIORITY 2: Buy a birthday gift for Mom — her birthday is this week and shipping takes days\nPRIORITY 3: Reply to the landlord about the renewal — leases have deadlines and silence costs money"
@@ -190,6 +214,9 @@ Rules: only draft replies to messages that ask something or need a response. Ski
 // — moving it to a conversation turn made the model stop after the DECISION
 // line and drop the WHY (1/5 vs 3/3 inline, verified 2026-10-23). Do not
 // "harmonise" this without re-testing.
+// 2026-10-25 A/B: anchoring the question in the prompt did not stop the model
+// copying the example's OPTION on open-ended questions (0/8 adversarial) —
+// the topic guard below is the actual fix, not the prompt wording.
 const SYS_DECISION = `You are a chief of staff who makes small decisions so your boss does not have to. The user is putting off one small decision. Decide it and justify it in one line. Output EXACTLY two lines and nothing else:
 
 DECISION: <the choice, under 10 words>
@@ -201,7 +228,7 @@ Output:
 DECISION: Cook eggs and rice at home
 WHY: Food is already in the fridge, you are tired, and payday is next week
 
-Rules: pick ONE option clearly. Only use facts from the input.`;
+Rules: pick ONE option clearly. Only use facts from the input. The question you must decide is exactly the one written after 'Decision I'm putting off:'. Do NOT pick a different question from the Context — the Context only supplies reasons, never a substitute question.`;
 
 // ---------- Demo night: a realistic sample so anyone can try it in 10 seconds ----------
 const DEMO = {
@@ -289,6 +316,82 @@ function parseDecision(text) {
   return choice ? { choice, why } : null;
 }
 
+// Decision-topic guard (2026-10-25): the 270M model copies the example's
+// OPTION on open-ended questions — anchored prompt alone went 0/8 on the
+// remote-job-hold adversarial input, and greedy locked the echo in. A parsed
+// choice is accepted only if it is not the example option verbatim and
+// shares at least one content word with the decision field. Anything else
+// is discarded and resampled; after retries the brief says undecided.
+// A narrow polarity rule (below) additionally rejects hold-vs-continue
+// flips, which shared-word checks cannot see.
+const DECISION_STOPWORDS = new Set(['a', 'an', 'the', 'to', 'or', 'and', 'of', 'i', 'my', 'me', 'should', 'whether', 'is', 'it', 'be', 'for', 'in', 'on', 'at', 'with', 'from', 'do', 'you', 'your']);
+function contentWords(s) {
+  return (s.toLowerCase().match(/[a-z]+/g) || []).filter(w => w.length >= 3 && !DECISION_STOPWORDS.has(w));
+}
+function isOnTopicDecision(choice, decisionField) {
+  const norm = choice.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (norm === 'cook eggs and rice at home') return false; // the inline example's option
+  if (isPolarityFlipped(choice, decisionField)) return false; // opposite answer wearing shared words
+  // Morphology-tolerant overlap, not exact equality: "searching" must match
+  // "search" and "paused" must match "pause" ("Don't continue searching" is
+  // the pause side and must pass). Rule: one word starts with the other.
+  // That keeps "schedule" away from "school" (neither starts with the other)
+  // and "household" away from "hold" (it ends with hold, it does not start
+  // with it) — a raw shared-prefix test failed both of those in unit tests.
+  const fieldWords = contentWords(decisionField);
+  const sameStem = (a, b) => a === b || a.startsWith(b) || b.startsWith(a);
+  return contentWords(choice).some(cw => fieldWords.some(fw => sameStem(cw, fw)));
+}
+
+// Narrow polarity rule (2026-10-25): only for "whether to … on hold" style
+// questions. Two flip shapes, both safe-direction (a misfire only costs a
+// retry, never a wrong brief):
+//  1. Continuation verb without any hold word ("Continue search…").
+//  2. Negation of the hold action ("Don't put … on hold", "Never put … on
+//     hold", "Don't put off …") — the confirmation run proved plain
+//     continuation verbs miss this shape entirely, and the "hold" inside it
+//     would even neutralise shape 1.
+// Deliberately NOT flipped: a negated continuation ("Don't continue
+// searching") is the pause side, so it must pass through.
+const HOLD_WORDS = ['hold', 'pause', 'postpone', 'defer'];
+const CONTINUE_WORDS = ['continue', 'keep', 'carry', 'persist'];
+function isPolarityFlipped(choice, decisionField) {
+  if (!/whether to (put|place|keep).* (on hold|pause|postpone|defer)/i.test(decisionField)) return false;
+  // Normalise before pattern tests: periods in "U.S." broke the [^.] spans
+  // in the negation patterns, and curly apostrophes must match "don't".
+  const c = choice.toLowerCase().replace(/[\u2019\u2018]/g, "'").replace(/\./g, '');
+  // Shape 2: negation of the hold action itself.
+  if (/(don't|dont|do not|never|not)\b[^.]{0,60}\b(put|place|keep)\b[^.]{0,60}\b(on hold|pause|postpone|defer)\b/.test(c)) return true;
+  if (/(don't|dont|do not|never|not)\b[^.]{0,40}\bput off\b/.test(c)) return true;
+  // A negated continuation is the pause side, not a flip.
+  if (/(don't|dont|do not|never|not|stop|quit)\s+(continue|keep|carry|persist)\b/.test(c)) return false;
+  // Shape 1: continuation verb without any hold word. Substring match, not
+  // word-boundary match: inflections like "paused" and "holding" must still
+  // count as hold words (a \b…\b test missed "paused" and wrongly rejected
+  // a correct "Keep the search paused" in unit tests).
+  const hasContinue = CONTINUE_WORDS.some(w => c.includes(w));
+  const hasHold = HOLD_WORDS.some(w => c.includes(w));
+  return hasContinue && !hasHold;
+}
+
+// Majority vote for whether-to-hold questions (2026-10-25). Samples here
+// already passed the guard (on-topic, WHY non-empty). A sample votes
+// hold-side only on a pause marker or a negated continuation; anything else
+// that passed the guard (e.g. "Work on the search") is unknown and does not
+// vote. Two hold-side votes accept the first of them; otherwise null
+// (undecided). This trades recall for zero wrong calls on hard questions:
+// in the majority experiment, hard open questions went 0/4 accepted (all
+// undecided) while simple binary questions stayed 3-0.
+const HOLD_SIDE_WORDS = ['hold', 'pause', 'postpone', 'defer', 'cancel', 'stop', 'quit', 'drop'];
+function resolveDecisionVote(samples) {
+  const holdVotes = samples.filter(s => {
+    const c = s.choice.toLowerCase();
+    if (/(don't|dont|do not|never|not|stop|quit)\s+(continue|keep|carry|persist)\b/.test(c)) return true;
+    return HOLD_SIDE_WORDS.some(w => c.includes(w));
+  });
+  return holdVotes.length >= 2 ? holdVotes[0] : null;
+}
+
 // ---------- Night log ----------
 const LOG_STEPS = [
   'Read tomorrow\u2019s schedule',
@@ -374,6 +477,11 @@ function renderBrief() {
     $('sec-decision').hidden = false;
     $('b-decision').innerHTML = '<strong>' + esc(b.decision.choice) + '</strong>' +
       (b.decision.why ? '<br/><span style="color:var(--muted2)">' + esc(b.decision.why) + '</span>' : '');
+  } else if (b.decisionUndecided) {
+    // Guard gave up after retries: say so plainly, never dress a wrong
+    // decision as the call. The wrong raw takes are NOT shown as the decision.
+    $('sec-decision').hidden = false;
+    $('b-decision').innerHTML = '<span style="color:var(--muted2)">Your chief of staff couldn\u2019t settle this one \u2014 the model kept answering a different question, so it left this undecided rather than guessing.</span>';
   } else if (b.inputs.decision && b.raw.decision) {
     // Same silent-failure class as the replies fix: the model answered but
     // wandered off-format — show its raw take instead of dropping the decision.
@@ -397,6 +505,8 @@ function briefToMarkdown() {
   else lines.push('- (nothing needs an answer)');
   if (b.decision) {
     lines.push('', '## Decided for you', `**${b.decision.choice}**${b.decision.why ? ' \u2014 ' + b.decision.why : ''}`);
+  } else if (b.decisionUndecided) {
+    lines.push('', '## Decided for you', '(left undecided \u2014 the model kept answering a different question, so no call was made)');
   } else if (b.raw.decision) {
     lines.push('', '## Decided for you (model went off-format — raw take)', b.raw.decision);
   }
@@ -437,10 +547,39 @@ async function runNightShift() {
     renderLog(4, 4);
     if (inputs.decision) {
       setStatus('Making the call you were putting off\u2026');
-      const rawD = await generate(SYS_DECISION,
-        `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
-      current.raw.decision = rawD;
-      current.decision = parseDecision(rawD);
+      // Decision acceptance (2026-10-25): single-sample acceptance let one
+      // unrecognised continue-side phrasing through per confirmation round
+      // (Don't put… / Book… / Work on…). Whether-to-hold questions now use
+      // majority vote: 3 fixed samples, each guard-checked (on-topic, WHY
+      // non-empty), then resolveDecisionVote. Asymmetry, disclosed in the
+      // write-up: flipped samples are rejected before voting, so a
+      // hold-pattern question can only resolve hold-side or abstain — never
+      // continue-side. Safe direction: an honest abstention beats a wrong
+      // call. Other questions keep first-accept (max 3 attempts).
+      let accepted = null, lastRaw = '';
+      const isHoldPattern = /whether to (put|place|keep).* (on hold|pause|postpone|defer)/i.test(inputs.decision);
+      if (isHoldPattern) {
+        const samples = [];
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const rawD = await generate(SYS_DECISION,
+            `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+          lastRaw = rawD;
+          const parsed = parseDecision(rawD);
+          if (parsed && parsed.why && isOnTopicDecision(parsed.choice, inputs.decision)) samples.push(parsed);
+        }
+        accepted = resolveDecisionVote(samples);
+      } else {
+        for (let attempt = 0; attempt < 3 && !accepted; attempt++) {
+          const rawD = await generate(SYS_DECISION,
+            `Input: Decision I'm putting off: ${inputs.decision}. Context: ${inputs.mind || 'none given'}.\nOutput:`, 120);
+          lastRaw = rawD;
+          const parsed = parseDecision(rawD);
+          if (parsed && parsed.why && isOnTopicDecision(parsed.choice, inputs.decision)) accepted = parsed;
+        }
+      }
+      current.raw.decision = lastRaw;
+      current.decision = accepted;
+      current.decisionUndecided = !accepted;
     }
     renderLog(6, -1);
     current.ts = Date.now();
